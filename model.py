@@ -100,15 +100,15 @@ impression_matrix = embedding_matrix_impression
 
 
 # this class is for the x-ray features encoder
+# this class is for the x-ray features encoder
 class Encoder_Xray(tensorflow.keras.Model):
     # Since you have already extracted the features and dumped it using pickle
     # This encoder passes those features through a Fully connected layer
     def __init__(self, embedding_dim):
         super(Encoder_Xray, self).__init__()
-        # shape after fc == (batch_size, 64, embedding_dim)
-        #self.fc1 = tensorflow.keras.layers.Dense(embedding_dim)
-        #self.fc2 = tensorflow.keras.layers.Dense(512)
-        self.fc = tensorflow.keras.layers.Dense(embedding_dim)
+        # shape after fc == (batch_size, embedding_dim)
+        self.fc = tensorflow.keras.layers.Dense(
+            embedding_dim, kernel_regularizer=l2)
 
     def call(self, x):
         x = self.fc(x)
@@ -123,31 +123,31 @@ class BahdanauAttention_Xray(tensorflow.keras.Model):
         super(BahdanauAttention_Xray, self).__init__()
         self.W1 = tensorflow.keras.layers.Dense(units)
         self.W2 = tensorflow.keras.layers.Dense(units)
-        self.W3 = tensorflow.keras.layers.Dense(units)
-        self.W4 = tensorflow.keras.layers.Dense(units)
         self.V = tensorflow.keras.layers.Dense(1)
         self.add = tensorflow.keras.layers.Add()
 
     def call(self, features, hidden):
-        # features(CNN_encoder output) shape == (batch_size, 64, embedding_dim)
+
+        # features (Xray_encoder output) shape == (batch_size, embedding_dim)
         # hidden shape == (batch_size, hidden_size)
-        # hidden_with_time_axis shape == (batch_size, 1, hidden_size)
-        hidden_with_time_axis = tensorflow.expand_dims(hidden, 1)
-        # features = self.add([feature1, feature2])
-        # hidden_m_with_time_axis = tensorflow.expand_dims(hidden_m, 1)
-        # hidden_c_with_time_axis = tensorflow.expand_dims(hidden_c, 1)
-        # score shape == (batch_size, 64, hidden_size)
-        score = tensorflow.nn.tanh(
-            self.W1(features) + self.W2(hidden_with_time_axis))
-        #score = tensorflow.nn.tanh(self.W1(features) + self.W2(hidden_m_with_time_axis)+ self.W3(hidden_c_with_time_axis))
-        # attention_weights shape == (batch_size, 64, 1)
-        # you get 1 at the last axis because you are applying score to self.V
-        attention_weights = tensorflow.nn.softmax(self.V(score), axis=1)
-        # context_vector shape after sum == (batch_size, hidden_size)
+
+        # features_xray shape == (batch_size, units)
+        features_xray = self.W1(features)
+        # features_hidden shape == (batch_size, units)
+        features_hidden = self.W2(hidden)
+        #print('features_hidden', features_hidden.shape)
+        # features_add shape == (batch_size, units)
+        features_add = features_xray + features_hidden
+        # score shape == (batch_size, units)
+        score = tensorflow.nn.tanh(features_add)
+        # features_score shape == (batch_size, 1)
+        features_score = self.V(score)
+        # attention_weights shape == (batch_size, 1)
+        attention_weights = tensorflow.nn.softmax(features_score, axis=1)
+        # context_vector shape after sum == (batch_size, embedding_dim)
         context_vector = attention_weights * features
-        context_vector = tensorflow.reduce_sum(context_vector, axis=1)
-        return context_vector, attention_weights
-# this class is for the decoder
+
+        return context_vector
 
 
 class Decoder(tensorflow.keras.Model):
@@ -160,45 +160,33 @@ class Decoder(tensorflow.keras.Model):
         self.gru = tensorflow.keras.layers.GRU(self.units,
                                                return_sequences=True,
                                                return_state=True,
-                                               recurrent_initializer='glorot_uniform')
-        self.lstm = tensorflow.keras.layers.LSTM(self.units,
-                                                 return_sequences=True,
-                                                 return_state=True,
-                                                 recurrent_initializer='glorot_uniform')
-        self.fc1 = tensorflow.keras.layers.Dense(self.units, activation='relu')
-        self.fc2 = tensorflow.keras.layers.Dense(vocab_size)
+                                               recurrent_initializer='glorot_uniform',
+                                               kernel_regularizer=l2, recurrent_regularizer=l2)
+        self.fc1 = tensorflow.keras.layers.Dense(
+            self.units, activation='relu', kernel_regularizer=l2)
+        self.fc2 = tensorflow.keras.layers.Dense(
+            vocab_size, kernel_regularizer=l2)
 
         self.attention1 = BahdanauAttention_Xray(self.units)
         self.attention2 = BahdanauAttention_Xray(self.units)
 
-        # self.attention = BahdanauAttention_Xray(self.units)
-
-    def call(self, x, features1, features2, hidden):
+    def call(self, x=np.zeros((1, 1)), features1=np.zeros((1, 100)), features2=np.zeros((1, 100)), hidden=np.zeros((1, 256))):
         # defining attention as a separate model
-        context_vector1, attention_weights1 = self.attention1(
-            features1, hidden)
-        context_vector2, attention_weights2 = self.attention2(
-            features2, hidden)
-        #context_vector2, attention_weights2 = self.attention(features1, features2, hidden_m, hidden_c)
+        context_vector1 = self.attention1(features1, hidden)
+        context_vector2 = self.attention2(features2, hidden)
         # x shape after passing through embedding == (batch_size, 1, embedding_dim)
         x = self.embedding(x)
-        # x = x.reshape(batch_size, embedding_dim, -1)
-        # x shape after concatenation == (batch_size, 1, embedding_dim + hidden_size)
         x = tensorflow.concat([tensorflow.expand_dims(
             context_vector1, 1), tensorflow.expand_dims(context_vector2, 1), x], axis=-1)
+        # x shape after concatenation == (batch_size, 1, embedding_dim + embedding_dim + embedding_dim)
         # passing the concatenated vector to the GRU
-        #output, state = self.gru(x)
         output, state = self.gru(x)
         # shape == (batch_size, max_length, hidden_size)
         x = self.fc1(output)
-
-        # x shape == (batch_size * max_length, hidden_size)
+        # x_shape == (batch_size * max_length, hidden_size)
         x = tensorflow.reshape(x, (-1, x.shape[2]))
-
-        # output shape == (batch_size * max_length, vocab)
+        # output_shape == (batch_size * max_length, vocab)
         x = self.fc2(x)
-
-        # return x, state
 
         return x, state
 
