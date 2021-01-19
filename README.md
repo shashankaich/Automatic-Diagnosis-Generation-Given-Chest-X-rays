@@ -40,4 +40,4 @@ EDA_Notebook: https://colab.research.google.com/drive/1w1-0VLdMWVFXVxrYbti3XB3-4
 Data_Processing_Notebook: https://colab.research.google.com/drive/1FiOKOJ3rhOpx5IYu3ZdQ5_Lg9pgFDJ-e#scrollTo=LltFb99VTB0o
 Tensorflow_Model_Notebook: https://colab.research.google.com/drive/11rjzlyFuW5PCeslzzbg6nVZJ40Xe9ypT#scrollTo=8gifbJhdkZRc
 Final_Notebook: https://colab.research.google.com/drive/12PpclSeLJHjjEfKnbOIG4RKa8TWjq_Je#scrollTo=Bb9L6b0lpXXo
-Pipeline: https://colab.research.google.com/drive/1mb-LjLsVnhlrhzkwQTxwWdXOV3Y_Kb78#scrollTo=yv5gXBDu3ePq
+Pipeline_Notebook: https://colab.research.google.com/drive/1mb-LjLsVnhlrhzkwQTxwWdXOV3Y_Kb78#scrollTo=yv5gXBDu3ePq
